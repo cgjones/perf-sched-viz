@@ -6,28 +6,59 @@
 <head>
   <meta charset="utf-8">
   <title>Visualize linux scheduling decisions</title>
-  <script src="perf-sched-viz.js"></script>
+  <script type="application/javascript;version=1.8"
+          src="perf-sched-viz.js"></script>
+  <style type="text/css">
+body, html {
+  width: 100%;
+  height: 100%;
+}
+
+section[role="region"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  overflow: hidden;
+  transform: translateX(+100%);
+  transition: transform .5s ease;
+}
+section[role="region"].active {
+  transform: translateX(0);
+}
+section[role="region"].previous {
+  transform: translateX(-100%);
+}
+  </style>
 </head>
 
 <body>
-  <p>To gather performance data, run your workload under
-  the <code>perf sched</code> tool as follows
-  <pre>
+  <section role="region" id="input" class="active">
+    <p>To gather performance data, run your workload under
+      the <code>perf sched</code> tool as follows
+      <pre>
 perf sched record -o /path/to/desired/output/dir/perf.data [workload]
-  </pre>
-  <p>NB: depending on your system configuration, you may need to run
-  the above command as root.</p>
-  <p>Next you must generate the "schedule map" that this tool
-  consumes.  To do so
-  <pre>
+      </pre>
+      NB: depending on your system configuration, you may need to run
+      the above command as root.</p>
+    <p>Next you must generate the "schedule map" that this tool
+      consumes.  To do so
+      <pre>
 cd /path/to/desired/output/dir
 perf sched map &gt; sched.map
-  </pre>
-  <p>Finally, either paste the schedule map into this textarea</p>
-  <textarea cols="80" rows="10" id="schedmaptext"></textarea>
-  <button onclick="loadTextarea()">Visualize</button>
-  <p>or load it from a file</p>
-  <input type="file" id="schedmapfile" onchange="loadFile()" />
+      </pre>
+    <p>Finally, either paste the schedule map into this textarea</p>
+    <textarea cols="80" rows="10" id="schedmaptext"></textarea>
+    <button id="showSchedmaptext">Visualize</button>
+    <p>or load it from a file</p>
+    <input type="file" id="schedmapfile"></input>
+  </section>
+
+  <section role="region" id="visualize">
+    <button id="back">Back</button>
+  </section>
 </body>
 
 </html>
