@@ -12,7 +12,8 @@
 
 'use strict';
 
-let eventsDiv, reader, schedmapText, schedmapFile, tasksDiv, vizContainer;
+let eventsDiv, scaleElt, schedmapText, schedmapFile, tasksDiv, timelineElt;
+let currentSched, currentUsPerPx, fileReader;
 
 window.onload = function() {
     schedmapFile = $('schedmapfile');
@@ -22,18 +23,25 @@ window.onload = function() {
     $('showSchedmaptext').onclick = loadTextarea;
 
     $('back').onclick = function() { document.location.hash = 'input'; }
+    scaleElt = $('scale');
+    scaleElt.onchange = function() {
+        currentUsPerPx = parseFloat(scaleElt.value);
+        render();
+    }
 
-    vizContainer = $('viz-container');
+    timelineElt = $('timeline');
     tasksDiv = $('tasks');
     eventsDiv = $('events');
 
     window.onhashchange = updateActiveRegion;
+    window.onresize = render;
 };
 
 function Schedule() {
     this.events = [ ];          // [ SchedEvent ], sorted by increasing time
     this.processes = { };       // name -> Process
     this.tasks = { };           // key -> Task
+    this.numTasks = 0;
     this.percentLostEvents = 0;
 }
 
@@ -55,6 +63,7 @@ Schedule.prototype = {
         let task = new Task(key, proc, tid);
         proc.tasks.push(task);
         this.tasks[key] = task;
+        ++this.numTasks;
     },
 };
 
@@ -81,23 +90,34 @@ function visualize(map) {
 
     document.location.hash = 'visualize';
 
-    let sched = parse(map);
-    info('Parsed schedule with '+ sched.events.length +' switches and '+
-         sched.percentLostEvents +'% lost events');
+    currentSched = parse(map);
+    info('Parsed schedule with '+ currentSched.events.length +' switches, '+
+         currentSched.numTasks +' tasks, and '+
+         currentSched.percentLostEvents +'% lost events');
 
-    render(sched);
+    currentUsPerPx = parseFloat(scaleElt.value);
+
+    render();
 }
 
-function render(sched) {
-    function makeTableRow(text) {
-        let tr = document.createElement('tr');
-        let td = document.createElement('td');
-        td.textContent = text;
-        tr.appendChild(td);
-        return tr;
+function render() {
+    let sched = currentSched, usPerPx = currentUsPerPx;
+
+    function makeTaskDiv(label, row, height) {
+        let div = document.createElement('div');
+        div.textContent = label;
+        div.style.top = (row * height) +'px';
+        let eltHeight = (height - 2);
+        div.style.height = eltHeight;
+        div.style.fontSize = Math.max(10, eltHeight);
+        return div;
     }
 
     clearViz();
+
+    let tasksBox = tasksDiv.getBoundingClientRect();
+    let h = ((tasksBox.bottom - tasksBox.top) / sched.numTasks)|0;
+    if (DEBUG) debug('Row height is '+ h +'px');
 
     let procsSorted = [ ];
     for (let p in sched.processes) {
@@ -108,45 +128,45 @@ function render(sched) {
         });
     if (DEBUG) debug('Processes: '+ procsSorted.join(', '));
 
-    let names = document.createElement('table');
-    let taskCoord = { };      // key -> index
+    let taskData = { };          // key -> { row: number, name: }
     let index = 0;
     procsSorted.forEach(function(p) {
-            names.appendChild(makeTableRow(p));
-
             let proc = sched.processes[p];
             let thread = 0;
             proc.tasks.forEach(function(t) {
-                    taskCoord[t.key] = index++;
-                    if (thread > 0) {
-                        let row = makeTableRow('(thread '+ thread +')');
-                        row.className = 'thread';
-                        names.appendChild(row);
+                    let row = index++;
+                    if (thread == 0) {
+                        tasksDiv.appendChild(makeTaskDiv(proc.name, row, h));
+                    } else {
+                        let div =
+                            makeTaskDiv('(thread '+ thread +')', row, h);
+                        div.className = 'thread';
+                        tasksDiv.appendChild(div);
                     }
+                    taskData[t.key] =
+                        { row: row, name: proc.name +', thread '+ thread };
                     ++thread;
                 });
         });
-    let numTasks = index;
-    if (DEBUG) debug('With '+ numTasks +' tasks');
-
-    tasksDiv.appendChild(names);
-    let nameBox = names.firstChild.getBoundingClientRect();
-    let h = (nameBox.bottom - nameBox.top);
-    if (DEBUG) debug('Cell height is '+ h +'px');
 
     let startTime = sched.events[0].timeSec;
     let lastTime = sched.events[sched.events.length - 1].timeSec;
-    let prevEvent = null;
+    let prevEvent = sched.events[0];
     sched.events.forEach(function(e) {
-            if (prevEvent && prevEvent.task) {
+            if (prevEvent.task == e.task) {
+                return;
+            }
+            if (prevEvent.task) {
+                let td = taskData[prevEvent.task.key];
                 let duration = (e.timeSec - prevEvent.timeSec);
                 let relStartTime = (e.timeSec - startTime);
                 let ev = document.createElement('div');
-                ev.className = 'event';
                 ev.style.height = h +'px';
-                ev.style.top = (taskCoord[prevEvent.task.key] * h) +'px';
-                ev.style.width = 1e3 * duration +'px';
-                ev.style.left = 1e3 * relStartTime +'px';
+                ev.style.top = (td.row * h) +'px';
+                ev.style.width = usPerPx * duration +'px';
+                ev.style.left = usPerPx * relStartTime +'px';
+                ev.setAttribute('title', td.name + ': '+
+                                (1e3 * duration).toFixed(3) +' ms');
 
                 eventsDiv.appendChild(ev);
             }
@@ -199,7 +219,7 @@ function loadTextarea() {
 function loadFile() {
     debug('Loading from file');
 
-    if (reader) {
+    if (fileReader) {
         error('Already trying to read an input file');
     }
     if (schedmapFile.files.length == 0) {
@@ -207,16 +227,16 @@ function loadFile() {
     }
     let file = schedmapFile.files[0];
 
-    reader = new FileReader();
-    reader.onload = function(e) {
+    fileReader = new FileReader();
+    fileReader.onload = function(e) {
         visualize(e.target.result);
-        reader = null;
+        fileReader = null;
     }
-    reader.onerror = function(e) {
+    fileReader.onerror = function(e) {
         error(e +'');
-        reader = null;
+        fileReader = null;
     }
-    reader.readAsText(file);
+    fileReader.readAsText(file);
 }
 
 let activeRegion = '#input';

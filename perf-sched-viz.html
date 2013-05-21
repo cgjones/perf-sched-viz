@@ -33,41 +33,53 @@ section[role="region"].previous {
   transform: translateX(-100%);
 }
 
-#viz-container {
-  position: absolute;
+#container {
   width: 100%;
   height: 100%;
-  margin: 0;
+  display: -moz-box;
+  -moz-box-orient: vertical;
+}
+#controls {
+  -moz-box-flex: 0;
+}
+#timeline {
   border: 0;
-  background-color: green;
-  overflow: scroll;
+  margin: 0;
+  padding: 0;
+  -moz-box-flex: 1;
+  display: -moz-box;
 }
 #tasks {
+  position: relative;
+  width: 16ex;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  -moz-box-flex: 0;
+}
+#tasks > div {
   position: absolute;
   left: 0;
-  top: 0;
-  width: 16ex;
-  background-color: pink;
-}
-table, th, td {
   width: 100%;
-  height: 100%;
+  text-overflow: ellipsis;
   border: 0;
-  padding: 0;
+  padding: 1px;
   margin: 0;
 }
+#tasks > div:nth-child(even) {
+  background: lightgray;
+}
+
 .thread {
   text-align: right;
 }
 #events {
-  position: absolute;
+  position: relative;
   left: 16ex;
-  top: 0;
-  width: 100%;
-  height: 100%;
-  overflow-x: scroll;
+  -moz-box-flex: 1;
+  overflow: auto;
 }
-.event {
+#events > div {
   position: absolute;
   background-color: cornflowerblue;
 }
@@ -97,10 +109,20 @@ perf sched map &gt; sched.map
   </section>
 
   <section role="region" id="visualize">
-    <button id="back">Back</button>
-    <div id="viz-container">
-      <div id="tasks"></div>
-      <div id="events"></div>
+    <div id="container">
+      <div id="controls">
+        <button id="back">Back</button>
+        <select id="scale">
+          <option value="1e3">1ms : 1px</option>
+          <option value="1e4">100µs : 1px</option>
+          <option value="1e5">10µs : 1px</option>
+          <option value="1e6">1µs : 1px</option>
+        </select>
+      </div>
+      <div id="timeline">
+        <div id="tasks"></div>
+        <div id="events"></div>
+      </div>
     </div>
   </section>
 </body>
