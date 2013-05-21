@@ -12,7 +12,7 @@
 
 'use strict';
 
-let reader, schedmapText, schedmapFile;
+let eventsDiv, reader, schedmapText, schedmapFile, tasksDiv, vizContainer;
 
 window.onload = function() {
     schedmapFile = $('schedmapfile');
@@ -23,6 +23,10 @@ window.onload = function() {
 
     $('back').onclick = function() { document.location.hash = 'input'; }
 
+    vizContainer = $('viz-container');
+    tasksDiv = $('tasks');
+    eventsDiv = $('events');
+
     window.onhashchange = updateActiveRegion;
 };
 
@@ -32,6 +36,7 @@ function Schedule() {
     this.tasks = { };           // key -> Task
     this.percentLostEvents = 0;
 }
+
 Schedule.prototype = {
     addEvent: function(cpu, key, timeSec) {
         //if (DEBUG) debug('New event: ['+ cpu +'] '+ key +', '+ timeSec);
@@ -54,31 +59,104 @@ Schedule.prototype = {
 };
 
 function Process(name) {
-    this.name = name;
+    this.name = name;           // string
     this.tasks = [ ]            // [ Task ]
 }
 
 function Task(key, process, tid) {
-    this.key = key;
-    this.process = process;
-    this.tid = tid;
+    this.key = key;             // string like 'A0'
+    this.process = process;     // Process
+    this.tid = tid;             // int
 }
 
 function SchedEvent(type, cpu, timeSec, task) {
     this.type = type;           // enum { 'idle', 'sched' }
-    this.cpu = cpu;
-    this.timeSec = timeSec;     // start of event
-    this.task = task;           // null for 'idle' event
+    this.cpu = cpu;             // uint
+    this.timeSec = timeSec;     // double, start of event
+    this.task = task;           // Task or null for "idle" event
 }
 
 function visualize(map) {
-    if (DEBUG) debug('Loading map data: "'+ map.slice(0, 20) +'" ...');
+    if (DEBUG) debug('Loading map data: "'+ map.slice(0, 20) +' ..."');
 
     document.location.hash = 'visualize';
 
     let sched = parse(map);
     info('Parsed schedule with '+ sched.events.length +' switches and '+
          sched.percentLostEvents +'% lost events');
+
+    render(sched);
+}
+
+function render(sched) {
+    function makeTableRow(text) {
+        let tr = document.createElement('tr');
+        let td = document.createElement('td');
+        td.textContent = text;
+        tr.appendChild(td);
+        return tr;
+    }
+
+    clearViz();
+
+    let procsSorted = [ ];
+    for (let p in sched.processes) {
+        procsSorted.push(p);
+    }
+    procsSorted.sort(function(a, b) {
+            return a.toLowerCase().localeCompare(b.toLowerCase());
+        });
+    if (DEBUG) debug('Processes: '+ procsSorted.join(', '));
+
+    let names = document.createElement('table');
+    let taskCoord = { };      // key -> index
+    let index = 0;
+    procsSorted.forEach(function(p) {
+            names.appendChild(makeTableRow(p));
+
+            let proc = sched.processes[p];
+            let thread = 0;
+            proc.tasks.forEach(function(t) {
+                    taskCoord[t.key] = index++;
+                    if (thread > 0) {
+                        let row = makeTableRow('(thread '+ thread +')');
+                        row.className = 'thread';
+                        names.appendChild(row);
+                    }
+                    ++thread;
+                });
+        });
+    let numTasks = index;
+    if (DEBUG) debug('With '+ numTasks +' tasks');
+
+    tasksDiv.appendChild(names);
+    let nameBox = names.firstChild.getBoundingClientRect();
+    let h = (nameBox.bottom - nameBox.top);
+    if (DEBUG) debug('Cell height is '+ h +'px');
+
+    let startTime = sched.events[0].timeSec;
+    let lastTime = sched.events[sched.events.length - 1].timeSec;
+    let prevEvent = null;
+    sched.events.forEach(function(e) {
+            if (prevEvent && prevEvent.task) {
+                let duration = (e.timeSec - prevEvent.timeSec);
+                let relStartTime = (e.timeSec - startTime);
+                let ev = document.createElement('div');
+                ev.className = 'event';
+                ev.style.height = h +'px';
+                ev.style.top = (taskCoord[prevEvent.task.key] * h) +'px';
+                ev.style.width = 1e3 * duration +'px';
+                ev.style.left = 1e3 * relStartTime +'px';
+
+                eventsDiv.appendChild(ev);
+            }
+            prevEvent = e;
+        });
+}
+
+function clearViz() {
+    eventsDiv.innerHTML = '';
+    tasksDiv.innerHTML = '';
 }
 
 const eventRx =
