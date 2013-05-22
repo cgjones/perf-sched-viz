@@ -167,6 +167,7 @@ function render() {
                 ev.style.left = usPerPx * relStartTime +'px';
                 ev.setAttribute('title', td.name + ': '+
                                 (1e3 * duration).toFixed(3) +' ms');
+                ev.className = ((1 + td.row) % 2) ? 'odd-row' : 'even-row';
 
                 eventsDiv.appendChild(ev);
             }
