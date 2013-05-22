@@ -109,7 +109,7 @@ function render() {
         div.style.top = (row * height) +'px';
         let eltHeight = (height - 2);
         div.style.height = eltHeight;
-        div.style.fontSize = Math.max(10, eltHeight);
+        div.style.fontSize = Math.max(10, eltHeight - 2);
         return div;
     }
 
