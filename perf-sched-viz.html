@@ -93,6 +93,12 @@ section[role="region"].previous {
 .even-row {
   background-color: navy;
 }
+.task-start {
+  background-color: green;
+}
+.task-end {
+  background-color: red;
+}
   </style>
 </head>
 
@@ -130,6 +136,8 @@ perf sched map &gt; sched.map
           <option value="1e5">10µs : 1px</option>
           <option value="1e6">1µs : 1px</option>
         </select>
+        <input id="filter" type="text"></input> Filter regexp
+        <span id="status"></span>
       </div>
       <div id="timeline">
         <div id="tasks"></div>

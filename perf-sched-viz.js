@@ -5,15 +5,14 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // TODO
-//  - filter by process name
 //  - show multiple CPUs
 //  - heavy processing on worker
 //  - streaming parsing
 
 'use strict';
 
-let eventsDiv, scaleElt, schedmapText, schedmapFile, tasksDiv, timelineElt;
-let currentSched, currentUsPerPx, fileReader;
+let eventsDiv, filterElt, scaleElt, schedmapText, schedmapFile, statusSpan, tasksDiv, timelineElt;
+let currentFilterRx, currentSched, currentUsPerPx, fileReader;
 
 window.onload = function() {
     schedmapFile = $('schedmapfile');
@@ -26,8 +25,22 @@ window.onload = function() {
     scaleElt = $('scale');
     scaleElt.onchange = function() {
         currentUsPerPx = parseFloat(scaleElt.value);
+        if (DEBUG) debug('Using new us/px '+ currentUsPerPx);
         render();
     }
+    filterElt = $('filter');
+    filterElt.onchange = function() {
+        let re = filterElt.value.trim();
+        if (re.length) {
+            if (DEBUG) debug('Using new filter /'+ re +'/');
+            currentFilterRx = new RegExp(re, "i");
+        } else {
+            debug('Cleared filter');
+            currentFilterRx = null;
+        }
+        render();
+    }
+    statusSpan = $('status');
 
     timelineElt = $('timeline');
     tasksDiv = $('tasks');
@@ -51,7 +64,11 @@ Schedule.prototype = {
         // TODO assert happens-after last event
         let type = (key == '.') ? 'idle' : 'sched';
         let task = (type == 'idle') ? null : this.tasks[key];
-        this.events.push(new SchedEvent(type, cpu, timeSec, task));
+        let event = new SchedEvent(type, cpu, timeSec, task)
+        this.events.push(event);
+        if (task) {
+            task.finalEvent = event;
+        }
     },
 
     newTask: function(key, processName, tid) {
@@ -76,6 +93,7 @@ function Task(key, process, tid) {
     this.key = key;             // string like 'A0'
     this.process = process;     // Process
     this.tid = tid;             // int
+    this.finalEvent = null;     // SchedEvent
 }
 
 function SchedEvent(type, cpu, timeSec, task) {
@@ -115,6 +133,11 @@ function render() {
 
     clearViz();
 
+    if (sched.percentLostEvents > 0) {
+        statusSpan.innerHTML = '<strong>Warning</strong>: perf lost '+
+                               sched.percentLostEvents +'% of samples';
+    }
+
     let tasksBox = tasksDiv.getBoundingClientRect();
     let h = ((tasksBox.bottom - tasksBox.top) / sched.numTasks)|0;
     if (DEBUG) debug('Row height is '+ h +'px');
@@ -134,17 +157,19 @@ function render() {
             let proc = sched.processes[p];
             let thread = 0;
             proc.tasks.forEach(function(t) {
-                    let row = index++;
-                    if (thread == 0) {
-                        tasksDiv.appendChild(makeTaskDiv(proc.name, row, h));
-                    } else {
-                        let div =
-                            makeTaskDiv('(thread '+ thread +')', row, h);
-                        div.className = 'thread';
-                        tasksDiv.appendChild(div);
+                    let longName = proc.name +', thread '+ thread;
+                    if (!currentFilterRx || currentFilterRx.test(longName)) {
+                        let row = index++;
+                        if (thread == 0) {
+                            tasksDiv.appendChild(makeTaskDiv(proc.name, row, h));
+                        } else {
+                            let div =
+                                makeTaskDiv('(thread '+ thread +')', row, h);
+                            div.className = 'thread';
+                            tasksDiv.appendChild(div);
+                        }
+                        taskData[t.key] = { row: row, name: longName };
                     }
-                    taskData[t.key] =
-                        { row: row, name: proc.name +', thread '+ thread };
                     ++thread;
                 });
         });
@@ -153,11 +178,12 @@ function render() {
     let lastTime = sched.events[sched.events.length - 1].timeSec;
     let prevEvent = sched.events[0];
     sched.events.forEach(function(e) {
-            if (prevEvent.task == e.task) {
+            let task = prevEvent.task;
+            if (task == e.task) {
                 return;
             }
-            if (prevEvent.task) {
-                let td = taskData[prevEvent.task.key];
+            let td;
+            if (task && (td = taskData[task.key])) {
                 let duration = (e.timeSec - prevEvent.timeSec);
                 let relStartTime = (e.timeSec - startTime);
                 let ev = document.createElement('div');
@@ -167,8 +193,16 @@ function render() {
                 ev.style.left = usPerPx * relStartTime +'px';
                 ev.setAttribute('title', td.name + ': '+
                                 (1e3 * duration).toFixed(3) +' ms');
-                ev.className = ((1 + td.row) % 2) ? 'odd-row' : 'even-row';
-
+                if (prevEvent.timeSec <= task.finalEvent.timeSec
+                    && task.finalEvent.timeSec <= e.timeSec) {
+                    ev.className = 'task-end';
+                } else  if (!('seen' in td)) {
+                    ev.className = 'task-start';
+                    td.seen = true;
+                } else {
+                    ev.className =
+                        ((1 + td.row) % 2) ? 'odd-row' : 'even-row';
+                }
                 eventsDiv.appendChild(ev);
             }
             prevEvent = e;
